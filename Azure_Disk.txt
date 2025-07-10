@@ -1,0 +1,95 @@
+✅ Step 1: Create a StorageClass
+
+# 1-storageclass.yaml
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: managed-premium-retain-sc
+provisioner: disk.csi.azure.com
+reclaimPolicy: Retain
+volumeBindingMode: WaitForFirstConsumer
+allowVolumeExpansion: true
+parameters:
+  skuName: Premium_LRS
+  kind: Managed
+
+✅ Step 2: Create a PersistentVolumeClaim
+
+# 2-pvc.yaml
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: azure-managed-disk-pvc
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: managed-premium-retain-sc
+  resources:
+    requests:
+      storage: 5Gi
+
+
+✅ Step 3: Create a Test Pod (e.g., nginx) Using the PVC
+
+# 3-nginx-pod.yaml
+apiVersion: v1
+kind: Pod
+metadata:
+  name: nginx-on-azure-disk
+spec:
+  containers:
+    - name: nginx
+      image: nginx:latest
+      ports:
+        - containerPort: 80
+      volumeMounts:
+        - mountPath: /mnt/azure
+          name: disk-storage
+  volumes:
+    - name: disk-storage
+      persistentVolumeClaim:
+        claimName: azure-managed-disk-pvc
+
+
+
+
+kubectl exec -it nginx-on-azure-disk -- /bin/bash
+echo "Hello from Azure Disk" > /mnt/azure/test.txt
+cat /mnt/azure/test.txt
+exit
+
+kubectl delete pod nginx-on-azure-disk
+
+kubectl apply -f 3-nginx-pod.yaml
+
+kubectl exec -it nginx-on-azure-disk -- cat /mnt/azure/test.txt
+
+✅ Step 5: Expand Disk Size
+Edit PVC to expand:
+
+resources:
+  requests:
+    storage: 10Gi
+
+kubectl apply -f 2-pvc.yaml
+kubectl delete pod nginx-on-azure-disk
+kubectl apply -f 3-nginx-pod.yaml
+kubectl exec -it nginx-on-azure-disk -- df -h /mnt/azure
+
+
+
+
+
+🧪 4. Test RWX Access Between Pods
+Step 1: Write from pod-a
+
+kubectl exec -it pod-a -- sh
+echo "Hello from Pod A" > /mnt/shared/hello.txt
+cat /mnt/shared/hello.txt
+exit
+
+Step 2: Read from pod-b
+kubectl exec -it pod-b -- sh
+cat /mnt/shared/hello.txt
+exit
+
